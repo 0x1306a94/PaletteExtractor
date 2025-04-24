@@ -1,170 +1,254 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
-    <meta charset="UTF-8">
-    <title>Dominant Color Extractor (Comparison)</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Dominant Color Extractor with Blur Effect</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 2rem;
-        }
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+      }
 
-        input {
-            margin-bottom: 1rem;
-        }
+      input {
+        margin-bottom: 1rem;
+      }
 
-        #imagePreview {
-            max-width: 300px;
-            max-height: 300px;
-            margin: 1rem auto;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-            display: none;
-        }
+      .image-container {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin: 1rem 0;
+      }
 
-        .palette-container {
-            margin-top: 2rem;
-            padding: 1rem;
-            border: 1px solid #ccc;
-            border-radius: 10px;
-        }
+      #imagePreview {
+        max-width: 300px;
+        max-height: 300px;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        display: none;
+      }
 
-        .palette-container h2 {
-            font-size: 1.2rem;
-            margin-bottom: 1rem;
-        }
+      #blurContainer {
+        width: 320px;
+        height: 613px;
+        border: 1px solid #ccc;
+        border-radius: 20px;
+        position: relative;
+        overflow: hidden;
+        display: none;
+      }
 
-        .palette {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 1rem;
-        }
+      #blurImage {
+        margin: 10px 10px 0 10px;
+        max-width: 300px; /* 320 - 10 (left) - 10 (right) */
+        max-height: 603px; /* 613 - 10 (top) */
+        border-radius: 10px;
+        object-fit: contain;
+        display: block;
+        position: relative;
+        z-index: 1; /* 确保图片在模糊层上方 */
+      }
 
-        .color-box {
-            width: 120px;
-            height: 120px;
-            border-radius: 12px;
-            color: white;
-            font-weight: bold;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 0.5rem;
-            text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
-        }
+      #blurEffect {
+        position: absolute;
+        top: -20px;
+        left: -20px;
+        width: 360px; /* 320 + 20 + 20 */
+        height: 653px; /* 613 + 20 + 20 */
+        background-color: rgba(255, 255, 255, 0.5);
+        filter: blur(20px);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        z-index: -1;
+      }
 
-        canvas {
-            display: none;
-        }
+      #colorName {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.35);
+        color: white;
+        padding: 5px;
+        border-radius: 5px;
+        text-align: center;
+        z-index: 2; /* 在图片和模糊层上方 */
+      }
 
-        #error {
-            color: red;
-            margin-top: 1rem;
-        }
+      .palette-container {
+        margin-top: 2rem;
+        padding: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+      }
+
+      .palette-container h2 {
+        font-size: 1.2rem;
+        margin-bottom: 1rem;
+      }
+
+      .palette {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1rem;
+      }
+
+      .color-box {
+        width: 120px;
+        height: 120px;
+        border-radius: 12px;
+        color: white;
+        font-weight: bold;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0.5rem;
+        text-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+
+      .color-box:hover {
+        transform: scale(1.05);
+      }
+
+      canvas {
+        display: none;
+      }
+
+      #error {
+        color: red;
+        margin-top: 1rem;
+      }
     </style>
-</head>
+  </head>
 
-<body>
-    <h1>Dominant Color Extractor</h1>
-    <input type="file" id="imageInput" accept="image/*">
-    <img id="imagePreview" alt="Image Preview">
+  <body>
+    <h1>Dominant Color Extractor with Blur Effect</h1>
+    <input type="file" id="imageInput" accept="image/*" />
+    <div class="image-container">
+      <img id="imagePreview" alt="Image Preview" />
+      <div id="blurContainer">
+        <img id="blurImage" alt="Blur Image" />
+        <div id="blurEffect"></div>
+        <div id="colorName"></div>
+      </div>
+    </div>
     <canvas id="canvas"></canvas>
     <div id="error"></div>
     <div class="palette-container">
-        <h2>PaletteAndroidX (接近 Android Palette)</h2>
-        <div id="paletteAndroidX" class="palette"></div>
+      <h2>Palette</h2>
+      <div id="paletteAndroidX" class="palette"></div>
     </div>
 
     <script src="palette-androidx.js"></script>
     <script>
-        const imageInput = document.getElementById('imageInput');
-        const imagePreview = document.getElementById('imagePreview');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const paletteAndroidXDiv = document.getElementById('paletteAndroidX');
-        const paletteKMeansDiv = document.getElementById('paletteKMeans');
-        const errorDiv = document.getElementById('error');
+      const imageInput = document.getElementById("imageInput");
+      const imagePreview = document.getElementById("imagePreview");
+      const blurContainer = document.getElementById("blurContainer");
+      const blurImage = document.getElementById("blurImage");
+      const blurEffect = document.getElementById("blurEffect");
+      const colorName = document.getElementById("colorName");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const paletteAndroidXDiv = document.getElementById("paletteAndroidX");
+      const errorDiv = document.getElementById("error");
 
-        function rgbToHex(r, g, b) {
-            return (
-                '#' +
-                [r, g, b]
-                    .map((x) => {
-                        const hex = x.toString(16);
-                        return hex.length === 1 ? '0' + hex : hex;
-                    })
-                    .join('')
-            );
+      function rgbToHex(r, g, b) {
+        return (
+          "#" +
+          [r, g, b]
+            .map((x) => {
+              const hex = x.toString(16);
+              return hex.length === 1 ? "0" + hex : hex;
+            })
+            .join("")
+        );
+      }
+
+      function displaySwatches(swatches, container) {
+        container.innerHTML = "";
+        for (const [name, color] of Object.entries(swatches)) {
+          if (!color) continue;
+          const hex = rgbToHex(color.r, color.g, color.b);
+          const div = document.createElement("div");
+          div.className = "color-box";
+          div.style.backgroundColor = hex;
+          div.style.color = color.textColor
+            ? `rgb(${color.textColor.join(",")})`
+            : "#fff";
+          div.innerHTML = `<div>${name}</div><div>${hex}</div>`;
+          div.addEventListener("click", () => {
+            blurEffect.style.backgroundColor = `rgba(${color.r}, ${color.g}, ${color.b}, 0.5)`;
+            blurEffect.style.opacity = "1";
+            colorName.textContent = name; // 更新颜色名称
+          });
+          container.appendChild(div);
         }
+      }
 
-        function displaySwatches(swatches, container, implementation) {
-            container.innerHTML = '';
-            for (const [name, color] of Object.entries(swatches)) {
-                if (!color) continue;
-                const hex = rgbToHex(color.r, color.g, color.b);
-                const div = document.createElement('div');
-                div.className = 'color-box';
-                div.style.backgroundColor = hex;
-                div.style.color = color.textColor ? `rgb(${color.textColor.join(',')})` : '#fff';
-                div.innerHTML = `<div>${name}</div><div>${hex}</div>`;
-                container.appendChild(div);
+      imageInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const img = new Image();
+        img.onload = () => {
+          imagePreview.src = img.src;
+          imagePreview.style.display = "block";
+          blurImage.src = img.src;
+          blurContainer.style.display = "block";
+          blurEffect.style.opacity = "0"; // 重置模糊
+          colorName.textContent = ""; // 重置颜色名称
+          errorDiv.textContent = "";
+
+          const maxSize = 200;
+          const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+          const newW = Math.floor(img.width * scale);
+          const newH = Math.floor(img.height * scale);
+          canvas.width = newW;
+          canvas.height = newH;
+          ctx.clearRect(0, 0, newW, newH);
+          ctx.drawImage(img, 0, 0, newW, newH);
+
+          try {
+            const imageData = ctx.getImageData(0, 0, newW, newH);
+            const customOptions = {
+              filters: [
+                ([r, g, b]) => {
+                  const luminance =
+                    (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+                  return luminance > 0.05 && luminance < 0.95;
+                },
+              ],
+              region: { left: 0, top: 0, right: newW / 2, bottom: newH / 2 },
+              resizeArea: 112 * 112,
+            };
+            const swatches = PaletteAndroidX.extractSwatches(imageData, 16);
+            displaySwatches(swatches, paletteAndroidXDiv);
+            console.log("PaletteAndroidX swatches:", swatches);
+
+            // 默认显示 dominant 颜色模糊
+            if (swatches.dominant) {
+              blurEffect.style.backgroundColor = `rgba(${swatches.dominant.r}, ${swatches.dominant.g}, ${swatches.dominant.b}, 0.5)`;
+              blurEffect.style.opacity = "1";
+              colorName.textContent = "dominant";
             }
-        }
-
-        imageInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const img = new Image();
-            img.onload = () => {
-                imagePreview.src = img.src;
-                imagePreview.style.display = 'block';
-                errorDiv.textContent = '';
-
-                const maxSize = 200;
-                const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
-                const newW = Math.floor(img.width * scale);
-                const newH = Math.floor(img.height * scale);
-                canvas.width = newW;
-                canvas.height = newH;
-                ctx.clearRect(0, 0, newW, newH);
-                ctx.drawImage(img, 0, 0, newW, newH);
-
-                try {
-                    const imageData = ctx.getImageData(0, 0, newW, newH);
-
-                    // PaletteAndroidX
-                    const customOptions = {
-                        filters: [
-                            ([r, g, b]) => {
-                                const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-                                return luminance > 0.05 && luminance < 0.95;
-                            }
-                        ],
-                        region: { left: 0, top: 0, right: newW / 2, bottom: newH / 2 },
-                        resizeArea: 112 * 112
-                    };
-
-                    const swatchesAndroidX = PaletteAndroidX.extractSwatches(imageData, 16);
-                    displaySwatches(swatchesAndroidX, paletteAndroidXDiv, 'PaletteAndroidX');
-
-                    // 打印对比信息
-                    console.log('PaletteAndroidX:', swatchesAndroidX);
-                } catch (e) {
-                    errorDiv.textContent = `Error: ${e.message}`;
-                    console.error('Error processing image:', e);
-                }
-            };
-            img.onerror = () => {
-                errorDiv.textContent = 'Error: Failed to load image';
-            };
-            img.src = URL.createObjectURL(file);
-        });
+          } catch (e) {
+            errorDiv.textContent = `Error: ${e.message}`;
+            console.error("Error processing image:", e);
+          }
+        };
+        img.onerror = () => {
+          errorDiv.textContent = "Error: Failed to load image";
+        };
+        img.src = URL.createObjectURL(file);
+      });
     </script>
-</body>
-
+  </body>
 </html>
