@@ -70,15 +70,15 @@ PaletteAndroidX.Target = class {
 };
 
 PaletteAndroidX.Target.VIBRANT = new PaletteAndroidX.Target();
-PaletteAndroidX.Target.VIBRANT._saturationTargets = [0.35, 1.0, 1.0];
+PaletteAndroidX.Target.VIBRANT._saturationTargets = [0.2, 1.0, 1.0]; // 放宽饱和度
 PaletteAndroidX.Target.VIBRANT._lightnessTargets = [0.3, 0.5, 0.7];
 
 PaletteAndroidX.Target.LIGHT_VIBRANT = new PaletteAndroidX.Target();
-PaletteAndroidX.Target.LIGHT_VIBRANT._saturationTargets = [0.35, 1.0, 1.0];
+PaletteAndroidX.Target.LIGHT_VIBRANT._saturationTargets = [0.2, 1.0, 1.0]; // 放宽饱和度
 PaletteAndroidX.Target.LIGHT_VIBRANT._lightnessTargets = [0.74, 0.85, 1.0];
 
 PaletteAndroidX.Target.DARK_VIBRANT = new PaletteAndroidX.Target();
-PaletteAndroidX.Target.DARK_VIBRANT._saturationTargets = [0.35, 1.0, 1.0];
+PaletteAndroidX.Target.DARK_VIBRANT._saturationTargets = [0.2, 1.0, 1.0]; // 放宽饱和度
 PaletteAndroidX.Target.DARK_VIBRANT._lightnessTargets = [0.0, 0.3, 0.45];
 
 PaletteAndroidX.Target.MUTED = new PaletteAndroidX.Target();
@@ -102,10 +102,12 @@ PaletteAndroidX.Palette = class {
     }
 
     generateSwatches() {
+        const usedSwatches = new Set(); // 避免重复选择
         for (const target of this._targets) {
             let bestSwatch = null;
             let bestScore = -Infinity;
             for (const swatch of this._swatches) {
+                if (usedSwatches.has(swatch)) continue; // 跳过已用颜色
                 const score = this.scoreSwatch(swatch, target);
                 if (score > bestScore) {
                     bestScore = score;
@@ -114,6 +116,7 @@ PaletteAndroidX.Palette = class {
             }
             if (bestSwatch) {
                 this._selectedSwatches.set(target, bestSwatch);
+                usedSwatches.add(bestSwatch); // 标记为已用
             }
         }
     }
@@ -135,7 +138,6 @@ PaletteAndroidX.Palette = class {
     getDarkMutedSwatch() { return this._selectedSwatches.get(PaletteAndroidX.Target.DARK_MUTED) || null; }
     getSwatchForTarget(target) { return this._selectedSwatches.get(target) || null; }
 
-    // 添加 getDominantSwatch 方法
     getDominantSwatch() {
         let dominant = null;
         let maxPopulation = 0;
@@ -176,7 +178,7 @@ PaletteAndroidX.PaletteBuilder = class {
 
     static DEFAULT_FILTER([r, g, b]) {
         const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-        return luminance > 0.05 && luminance < 0.95;
+        return luminance > 0.01 && luminance < 0.99; // 放宽过滤器
     }
 
     maximumColorCount(count) {
@@ -284,77 +286,80 @@ PaletteAndroidX.PaletteBuilder = class {
         }, 0);
     }
 
-    quantizeColors(imageData) {
-        const colorMap = new Map();
-        for (let i = 0; i < imageData.length; i += 4) {
-            const r = Math.round(imageData[i] / 8) * 8;
-            const g = Math.round(imageData[i + 1] / 8) * 8;
-            const b = Math.round(imageData[i + 2] / 8) * 8;
-            if (isNaN(r) || isNaN(g) || isNaN(b)) continue;
-            if (this._filters.every(filter => filter([r, g, b]))) {
-                const key = `${r},${g},${b}`;
-                colorMap.set(key, (colorMap.get(key) || 0) + 1);
+// 优化 quantizeColors，添加调试日志
+quantizeColors(imageData) {
+    const colorMap = new Map();
+    for (let i = 0; i < imageData.length; i += 4) {
+        const r = Math.round(imageData[i] / 8) * 8;
+        const g = Math.round(imageData[i + 1] / 8) * 8;
+        const b = Math.round(imageData[i + 2] / 8) * 8;
+        if (isNaN(r) || isNaN(g) || isNaN(b)) continue;
+        if (this._filters.every(filter => filter([r, g, b]))) {
+            const key = `${r},${g},${b}`;
+            colorMap.set(key, (colorMap.get(key) || 0) + 1);
+        }
+    }
+
+    console.log('Color map size:', colorMap.size); // 调试：颜色池大小
+
+    if (colorMap.size === 0) {
+        console.warn('No valid colors after filtering');
+        return [];
+    }
+
+    let colors = Array.from(colorMap.entries())
+        .map(([key, count]) => [...key.split(',').map(Number), count])
+        .sort((a, b) => b[3] - a[3])
+        .slice(0, this._maxColors);
+
+    while (colors.length > this._maxColors) {
+        const closestPair = this.findClosestPair(colors);
+        const merged = this.mergeColors(closestPair[0], closestPair[1]);
+        colors = colors.filter(c => c !== closestPair[0] && c !== closestPair[1]);
+        colors.push(merged);
+    }
+
+    return colors;
+}
+
+findClosestPair(colors) {
+    let minDistance = Infinity;
+    let pair = [colors[0], colors[1]];
+    for (let i = 0; i < colors.length; i++) {
+        for (let j = i + 1; j < colors.length; j++) {
+            const distance = this.colorDistance(colors[i], colors[j]);
+            if (distance < minDistance && !isNaN(distance)) {
+                minDistance = distance;
+                pair = [colors[i], colors[j]];
             }
         }
-
-        if (colorMap.size === 0) {
-            console.warn('No valid colors after filtering');
-            return [];
-        }
-
-        let colors = Array.from(colorMap.entries())
-            .map(([key, count]) => [...key.split(',').map(Number), count])
-            .sort((a, b) => b[3] - a[3])
-            .slice(0, this._maxColors);
-
-        while (colors.length > this._maxColors) {
-            const closestPair = this.findClosestPair(colors);
-            const merged = this.mergeColors(closestPair[0], closestPair[1]);
-            colors = colors.filter(c => c !== closestPair[0] && c !== closestPair[1]);
-            colors.push(merged);
-        }
-
-        return colors;
     }
+    return pair;
+}
 
-    findClosestPair(colors) {
-        let minDistance = Infinity;
-        let pair = [colors[0], colors[1]];
-        for (let i = 0; i < colors.length; i++) {
-            for (let j = i + 1; j < colors.length; j++) {
-                const distance = this.colorDistance(colors[i], colors[j]);
-                if (distance < minDistance && !isNaN(distance)) {
-                    minDistance = distance;
-                    pair = [colors[i], colors[j]];
-                }
-            }
-        }
-        return pair;
-    }
+colorDistance(c1, c2) {
+    const dr = c1[0] - c2[0];
+    const dg = c1[1] - c2[1];
+    const db = c1[2] - c2[2];
+    return Math.sqrt(dr * dr + dg * dg + db * db);
+}
 
-    colorDistance(c1, c2) {
-        const dr = c1[0] - c2[0];
-        const dg = c1[1] - c2[1];
-        const db = c1[2] - c2[2];
-        return Math.sqrt(dr * dr + dg * dg + db * db);
+mergeColors(c1, c2) {
+    const totalPopulation = c1[3] + c2[3];
+    if (totalPopulation === 0) {
+        console.warn('Zero population in mergeColors, returning first color');
+        return [c1[0], c1[1], c1[2], 0];
     }
-
-    mergeColors(c1, c2) {
-        const totalPopulation = c1[3] + c2[3];
-        if (totalPopulation === 0) {
-            console.warn('Zero population in mergeColors, returning first color');
-            return [c1[0], c1[1], c1[2], 0];
-        }
-        const r = (c1[0] * c1[3] + c2[0] * c2[3]) / totalPopulation;
-        const g = (c1[1] * c1[3] + c2[1] * c2[3]) / totalPopulation;
-        const b = (c1[2] * c1[3] + c2[2] * c2[3]) / totalPopulation;
-        return [
-            Math.max(0, Math.min(255, Math.round(r))),
-            Math.max(0, Math.min(255, Math.round(g))),
-            Math.max(0, Math.min(255, Math.round(b))),
-            totalPopulation
-        ];
-    }
+    const r = (c1[0] * c1[3] + c2[0] * c2[3]) / totalPopulation;
+    const g = (c1[1] * c1[3] + c2[1] * c2[3]) / totalPopulation;
+    const b = (c1[2] * c1[3] + c2[2] * c2[3]) / totalPopulation;
+    return [
+        Math.max(0, Math.min(255, Math.round(r))),
+        Math.max(0, Math.min(255, Math.round(g))),
+        Math.max(0, Math.min(255, Math.round(b))),
+        totalPopulation
+    ];
+}
 };
 
 PaletteAndroidX.extractSwatches = function(imageData, numSwatches, options = {}) {

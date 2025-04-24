@@ -218,17 +218,17 @@
 
           try {
             const imageData = ctx.getImageData(0, 0, newW, newH);
-            const customOptions = {
-              filters: [
-                ([r, g, b]) => {
-                  const luminance =
-                    (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-                  return luminance > 0.05 && luminance < 0.95;
-                },
-              ],
-              region: { left: 0, top: 0, right: newW / 2, bottom: newH / 2 },
-              resizeArea: 112 * 112,
-            };
+            // const customOptions = {
+            //   filters: [
+            //     ([r, g, b]) => {
+            //       const luminance =
+            //         (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+            //       return luminance > 0.05 && luminance < 0.95;
+            //     },
+            //   ],
+            //   region: { left: 0, top: 0, right: newW / 2, bottom: newH / 2 },
+            //   resizeArea: 112 * 112,
+            // };
             const swatches = PaletteAndroidX.extractSwatches(imageData, 16);
             displaySwatches(swatches, paletteAndroidXDiv);
             console.log("PaletteAndroidX swatches:", swatches);
