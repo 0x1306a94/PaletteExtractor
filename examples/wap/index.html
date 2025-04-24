@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Dominant Color Extractor (JavaScript)</title>
+    <title>Dominant Color Extractor (Comparison)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -22,16 +22,25 @@
             border: 1px solid #ccc;
             border-radius: 10px;
             display: none;
-            /* 默认隐藏 */
         }
 
-        #palette {
+        .palette-container {
+            margin-top: 2rem;
+            padding: 1rem;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+        }
+
+        .palette-container h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .palette {
             display: flex;
             flex-wrap: wrap;
             justify-content: center;
-            /* 水平居中 */
             gap: 1rem;
-            margin-top: 2rem;
         }
 
         .color-box {
@@ -51,6 +60,11 @@
         canvas {
             display: none;
         }
+
+        #error {
+            color: red;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 
@@ -59,15 +73,21 @@
     <input type="file" id="imageInput" accept="image/*">
     <img id="imagePreview" alt="Image Preview">
     <canvas id="canvas"></canvas>
-    <div id="palette"></div>
+    <div id="error"></div>
+    <div class="palette-container">
+        <h2>PaletteAndroidX (接近 Android Palette)</h2>
+        <div id="paletteAndroidX" class="palette"></div>
+    </div>
 
-    <script src="palette.js"></script>
+    <script src="palette-androidx.js"></script>
     <script>
         const imageInput = document.getElementById('imageInput');
         const imagePreview = document.getElementById('imagePreview');
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const paletteDiv = document.getElementById('palette');
+        const paletteAndroidXDiv = document.getElementById('paletteAndroidX');
+        const paletteKMeansDiv = document.getElementById('paletteKMeans');
+        const errorDiv = document.getElementById('error');
 
         function rgbToHex(r, g, b) {
             return (
@@ -81,6 +101,20 @@
             );
         }
 
+        function displaySwatches(swatches, container, implementation) {
+            container.innerHTML = '';
+            for (const [name, color] of Object.entries(swatches)) {
+                if (!color) continue;
+                const hex = rgbToHex(color.r, color.g, color.b);
+                const div = document.createElement('div');
+                div.className = 'color-box';
+                div.style.backgroundColor = hex;
+                div.style.color = color.textColor ? `rgb(${color.textColor.join(',')})` : '#fff';
+                div.innerHTML = `<div>${name}</div><div>${hex}</div>`;
+                container.appendChild(div);
+            }
+        }
+
         imageInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -88,9 +122,9 @@
             const img = new Image();
             img.onload = () => {
                 imagePreview.src = img.src;
-                imagePreview.style.display = 'block'; // 显示预览图
+                imagePreview.style.display = 'block';
+                errorDiv.textContent = '';
 
-                // ==== 缩放处理 ====
                 const maxSize = 200;
                 const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
                 const newW = Math.floor(img.width * scale);
@@ -100,19 +134,33 @@
                 ctx.clearRect(0, 0, newW, newH);
                 ctx.drawImage(img, 0, 0, newW, newH);
 
-                const { data } = ctx.getImageData(0, 0, newW, newH);
-                const swatches = extractSwatches(data, true, 8);
+                try {
+                    const imageData = ctx.getImageData(0, 0, newW, newH);
 
-                paletteDiv.innerHTML = '';
-                for (const [name, color] of Object.entries(swatches)) {
-                    if (!color) continue;
-                    const hex = rgbToHex(color.r, color.g, color.b);
-                    const div = document.createElement('div');
-                    div.className = 'color-box';
-                    div.style.backgroundColor = hex;
-                    div.innerHTML = `<div>${name}</div><div>${hex}</div>`;
-                    paletteDiv.appendChild(div);
+                    // PaletteAndroidX
+                    const customOptions = {
+                        filters: [
+                            ([r, g, b]) => {
+                                const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+                                return luminance > 0.05 && luminance < 0.95;
+                            }
+                        ],
+                        region: { left: 0, top: 0, right: newW / 2, bottom: newH / 2 },
+                        resizeArea: 112 * 112
+                    };
+
+                    const swatchesAndroidX = PaletteAndroidX.extractSwatches(imageData, 16);
+                    displaySwatches(swatchesAndroidX, paletteAndroidXDiv, 'PaletteAndroidX');
+
+                    // 打印对比信息
+                    console.log('PaletteAndroidX:', swatchesAndroidX);
+                } catch (e) {
+                    errorDiv.textContent = `Error: ${e.message}`;
+                    console.error('Error processing image:', e);
                 }
+            };
+            img.onerror = () => {
+                errorDiv.textContent = 'Error: Failed to load image';
             };
             img.src = URL.createObjectURL(file);
         });
